@@ -5,6 +5,8 @@ import re
 from typing import Protocol, Sequence
 import warnings
 
+from typing import Literal
+
 import numpy as np
 
 from .errors import ModelInitializationError, ProcessingError
@@ -28,7 +30,7 @@ class PaddleOcrEngine:
     """
     A PaddleOCR-based implementation of the OcrEngine protocol.
     """
-    def __init__(self, *, device: str | None = None) -> None:
+    def __init__(self, *, size: Literal["tiny", "small", "medium"] = "small", device: str | None = None) -> None:
         # simply validating the device string format
         if device is not None and not re.fullmatch(r"cpu|gpu(?::\d+)?", device):
             raise ValueError("device must be 'cpu', 'gpu', or 'gpu:<index>'.")
@@ -84,8 +86,8 @@ class PaddleOcrEngine:
 
                 # underlying OCR object initialization
                 self._ocr = PaddleOCR(
-                    text_detection_model_name="PP-OCRv5_server_det",
-                    text_recognition_model_name="PP-OCRv5_server_rec",
+                    text_detection_model_name=f"PP-OCRv6_{size}_det",
+                    text_recognition_model_name=f"PP-OCRv6_{size}_rec",
                     use_doc_orientation_classify=False,
                     use_doc_unwarping=False,
                     use_textline_orientation=False,

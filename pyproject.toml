@@ -18,11 +18,11 @@ dependencies = [
 
 [project.optional-dependencies]
 ocr = [
-    "paddleocr==3.4.1",
+    "paddleocr==3.7.0",
     "paddlepaddle==3.3.1",
 ]
 ocr-gpu = [
-    "paddleocr==3.4.1",
+    "paddleocr==3.7.0",
     "paddlepaddle-gpu==3.3.1",
     # The Windows wheel has CUDA requirements not present in the Linux wheel
     # metadata used by uv's cross-platform lock resolution.
@@ -37,6 +37,7 @@ ocr-gpu = [
 notebook = [
     "ipykernel>=6,<8",
     "matplotlib>=3.9,<4",
+    "ipywidgets>=8,<9"
 ]
 api = [
     "fastapi>=0.115,<1",

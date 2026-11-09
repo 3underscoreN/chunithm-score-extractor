@@ -6,7 +6,7 @@ A Python library and optional self-hosted HTTP API for extracting the current-pl
 
 - Python 3.13
 - numpy, OpenCV, Pillow
-- PaddleOCR 3.4.1 with PaddlePaddle 3.3.1 (CPU/GPU build). It is possible to bring your own custom OCR engine, which we will mention below.
+- PaddleOCR 3.7.0 with PaddlePaddle 3.3.1 (CPU/GPU build). It is possible to bring your own custom OCR engine, which we will mention below.
 - Docker (optional)
 
 Install the library and OCR runtime:
@@ -33,6 +33,12 @@ print(result.difficulty.value)
 ```
 
 The first initialization may acquire PaddleOCR model files.
+
+After the full-screen OCR pass, the extractor reuses confident score and title
+readings when at least 80% of each reading's bounding box lies inside the
+corresponding field region. It retries an uncertain or conflicting field on an
+enlarged crop, so extraction requires one to three OCR passes. Score/header
+disagreements must still be resolved; otherwise the extractor raises an error.
 
 Success returns an `ExtractionResult`. See below for the available fields.
 

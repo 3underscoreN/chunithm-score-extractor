@@ -1,6 +1,8 @@
 import re
 from collections.abc import Sequence
 
+from typing import Literal
+
 import cv2
 import numpy as np
 
@@ -18,6 +20,7 @@ from .ocr import OcrEngine, PaddleOcrEngine, TextReading
 
 
 CONFIDENCE_THRESHOLD = 0.75
+REGION_OVERLAP_THRESHOLD = 0.80
 _DIFFICULTY_NAMES = {
     "BASIC": Difficulty.BAS,
     "ADVANCED": Difficulty.ADV,
@@ -39,6 +42,7 @@ class ChunithmExtractor:
         image_limits: ImageLimits = ImageLimits(),
         confidence_threshold: float = CONFIDENCE_THRESHOLD,
         *,
+        size: Literal["tiny", "small", "medium"] = "small",
         device: str | None = None,
     ) -> None:
         """
@@ -52,6 +56,8 @@ class ChunithmExtractor:
             The limits for decoding the image.
         confidence_threshold : float, optional
             The confidence threshold for accepting OCR readings.
+        size : Literal["tiny", "small", "medium"], optional
+            The size of the OCR model to use if a custom engine is not provided.
         device : str | None, optional
             The device to use for the OCR engine if a custom engine is not provided.
         """
@@ -59,7 +65,7 @@ class ChunithmExtractor:
             raise ValueError("confidence_threshold must be between 0 and 1.")
         if ocr is not None and device is not None:
             raise ValueError("device cannot be specified with a custom OCR engine.")
-        self._ocr = ocr if ocr is not None else PaddleOcrEngine(device=device)
+        self._ocr = ocr if ocr is not None else PaddleOcrEngine(size=size, device=device)
         self._image_limits = image_limits
         self._confidence_threshold = confidence_threshold
 
@@ -117,44 +123,144 @@ class ChunithmExtractor:
         # gets the difficulty to use
         difficulty_anchor = difficulty_anchors[0]
 
-        # Defines the regions for score and title extraction
-        score_region = (
-            max(0.0, score_anchor.left / SCREEN_WIDTH - 0.02),
-            min(1.0, score_anchor.bottom / SCREEN_HEIGHT + 0.025),
-            min(1.0, rank_anchor.left / SCREEN_WIDTH - 0.005),
-            min(1.0, score_anchor.bottom / SCREEN_HEIGHT + 0.19),
-        )
-        title_region = (
-            max(0.0, difficulty_anchor.left / SCREEN_WIDTH - 0.02),
-            min(1.0, difficulty_anchor.bottom / SCREEN_HEIGHT + 0.002),
-            0.995,
-            min(1.0, difficulty_anchor.bottom / SCREEN_HEIGHT + 0.05),
+        # get the field regions for score and title based on the identified anchors
+        score_region, title_region = _field_regions(
+            score_anchor, rank_anchor, difficulty_anchor
         )
 
-        # Second pass: pass score_lines and title_lines to the respective extraction 
-        # functions to get the actual score and song title
-        score_lines = _read_region(self._ocr, screen, score_region)
-        title_lines = _read_region(self._ocr, screen, title_region)
+        # extracting score
+        header_lines = _in_region(readings, (0.35, 0.0, 0.72, 0.10))
+        first_score_lines = _overlapping_region(readings, score_region)
+        try:
+            # hacky code to check if the first score lines contain a valid score reading
+            _extract_score(first_score_lines, self._confidence_threshold)
 
-        # Extract the current score and song title from the respective regions
-        score = _current_score(
-            _in_region(score_lines, score_region),
-            _in_region(readings, (0.35, 0.0, 0.72, 0.10)),
-            self._confidence_threshold,
-        )
+            # if no exception is raised, the first score lines are valid
+            score = _current_score(first_score_lines, header_lines, self._confidence_threshold)
 
-        # Extract the song title from the title region, excluding cabinet banner fragments
-        song_name = _extract_title(
-            [
-                line for line in _in_region(title_lines, title_region)
-                if line.top / SCREEN_HEIGHT <= difficulty_anchor.bottom / SCREEN_HEIGHT + 0.027
-                and not _is_cabinet_banner_fragment(
-                    line, readings, difficulty_anchor, self._confidence_threshold
-                )
-            ],
-            self._confidence_threshold,
+            if any(
+                line.confidence < self._confidence_threshold
+                and _SCORE_PATTERN.search(line.text)
+                for line in first_score_lines
+            ): # if any score line is below the confidence threshold and contains a score pattern
+                raise UncertainResultError("A score reading is below the confidence threshold.")
+        except (UncertainResultError, ConflictingReadingsError) as exc:
+            score_lines = _in_region(_read_region(self._ocr, screen, score_region), score_region)
+            if isinstance(exc, ConflictingReadingsError):
+                # Do not resolve a known disagreement using only the original header
+                _extract_score(score_lines, self._confidence_threshold)
+
+            score = _current_score(score_lines, header_lines, self._confidence_threshold)
+
+        # title extraction
+        first_title_lines = _title_candidates(
+            _overlapping_region(readings, title_region),
+            readings, difficulty_anchor, self._confidence_threshold,
         )
+        try:
+            song_name = _extract_title(first_title_lines, self._confidence_threshold)
+        except (UncertainResultError, ConflictingReadingsError):
+            # if title extraction results in uncertainty or conflict, crop the title region and retry
+            title_lines = _read_region(self._ocr, screen, title_region)
+            song_name = _extract_title(
+                _title_candidates(
+                    _in_region(title_lines, title_region),
+                    readings, difficulty_anchor, self._confidence_threshold,
+                ),
+                self._confidence_threshold,
+            )
         return ExtractionResult(score=score, song_name=song_name, difficulty=difficulty)
+
+
+def _field_regions(
+    score_anchor: TextReading,
+    rank_anchor: TextReading,
+    difficulty_anchor: TextReading,
+) -> tuple[tuple[float, float, float, float], tuple[float, float, float, float]]:
+    """
+    Define the regions for score and title fields based on the identified anchors.
+    Returns a tuple containing the score region and the title region.
+    """
+    score_region = (
+        max(0.0, score_anchor.left / SCREEN_WIDTH - 0.02),
+        min(1.0, score_anchor.bottom / SCREEN_HEIGHT + 0.025),
+        min(1.0, rank_anchor.left / SCREEN_WIDTH - 0.005),
+        min(1.0, score_anchor.bottom / SCREEN_HEIGHT + 0.19),
+    )
+    title_region = (
+        max(0.0, difficulty_anchor.left / SCREEN_WIDTH - 0.02),
+        min(1.0, difficulty_anchor.bottom / SCREEN_HEIGHT + 0.002),
+        0.993,
+        min(1.0, difficulty_anchor.bottom / SCREEN_HEIGHT + 0.05),
+    )
+    return score_region, title_region
+
+
+def _overlapping_region(
+    readings: Sequence[TextReading],
+    region: tuple[float, float, float, float],
+) -> tuple[TextReading, ...]:
+    """
+    Returns the readings that overlap with the specified region.
+
+    Parameters
+    ----------
+    readings : Sequence[TextReading]
+        The OCR readings from the screen.
+    region : tuple[float, float, float, float]
+        The region to check for overlap, specified as (left, top, right, bottom) in normalized coordinates.
+
+    Returns
+    -------
+    tuple[TextReading, ...]
+        The readings that overlap with the specified region.
+    """
+    left, top, right, bottom = region
+    left, right = left * SCREEN_WIDTH, right * SCREEN_WIDTH
+    top, bottom = top * SCREEN_HEIGHT, bottom * SCREEN_HEIGHT
+    selected = []
+    for line in readings:
+        width, height = line.right - line.left, line.bottom - line.top
+        if width <= 0 or height <= 0:
+            continue
+        intersection = max(0.0, min(line.right, right) - max(line.left, left)) * max(
+            0.0, min(line.bottom, bottom) - max(line.top, top)
+        )
+        if intersection >= REGION_OVERLAP_THRESHOLD * width * height:
+            selected.append(line)
+    return tuple(selected)
+
+
+def _title_candidates(
+    lines: Sequence[TextReading],
+    screen_readings: Sequence[TextReading],
+    difficulty_anchor: TextReading,
+    threshold: float,
+) -> tuple[TextReading, ...]:
+    """
+    Returns the candidate title lines that are below the difficulty anchor and not part of the cabinet banner.
+
+    Parameters
+    ----------
+    lines : Sequence[TextReading]
+        The OCR readings from the screen.
+    screen_readings : Sequence[TextReading]
+        The OCR readings from the entire screen.
+    difficulty_anchor : TextReading
+        The difficulty anchor reading.
+    threshold : float
+        The confidence threshold for considering a reading.
+
+    Returns
+    -------
+    tuple[TextReading, ...]
+        The candidate title lines that meet the criteria.
+    """
+    return tuple(
+        line for line in lines
+        if line.top / SCREEN_HEIGHT <= difficulty_anchor.bottom / SCREEN_HEIGHT + 0.027
+        and not _is_cabinet_banner_fragment(line, screen_readings, difficulty_anchor, threshold)
+    )
 
 
 def _is_cabinet_banner_fragment(
@@ -368,8 +474,7 @@ def _extract_score(lines: Sequence[TextReading], threshold: float) -> int:
     """
     Extracts the current-play score from the given OCR readings.
 
-    This function should not be called directly. Use `_current_score` to
-    extracts the score from the main or header lines as needed.
+    This function converts TextReading sequences to integer scores.
 
     Parameters
     ----------
