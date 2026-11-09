@@ -41,7 +41,7 @@ Invalid images, unsupported layouts, uncertain readings, conflicting readings, m
 The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit, 25-megapixel decoded-pixel limit, and 10,000-pixel dimension limit. The limit can be adjusted if necessary.
 
 > [!IMPORTANT]
-> There's no guarantee that OCR would be able to parse 100% matching text from the images. For example, for really long songs, or for weird character sequences, the OCR may produce incorrect or incomplete readings. Fuzzy matching to a known song database, and appropriate error handling should be applied when using the extracted results.
+> There's no guarantee that OCR would be able to parse 100% matching text from the images. For example, for really long song names, or for weird character sequences, the OCR may produce incorrect or incomplete readings. Fuzzy matching to a known song database, and appropriate error handling should be applied when using the extracted results.
 
 ### Some API I guess?
 ```python
