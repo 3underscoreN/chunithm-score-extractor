@@ -34,7 +34,9 @@ print(result.difficulty.value)
 
 The first initialization may acquire PaddleOCR model files.
 
-Success returns an `ExtractionResult` with integer `score`, Unicode `song_name`, and a `Difficulty` (`BAS`, `ADV`, `EXP`, `MAS`, `ULT`, or `WORLDEND`). Invalid images, unsupported layouts, uncertain readings, conflicting readings, model initialization errors, and processing failures raise typed `ExtractionError` subclasses. Results are all-or-nothing; unreadable fields are not guessed.
+Success returns an `ExtractionResult`. See below for the available fields.
+
+Invalid images, unsupported layouts, uncertain readings, conflicting readings, model initialization errors, and processing failures raise errors. See the `chunithm_score_extractor.errors` module for the full list of exceptions.
 
 The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit, 25-megapixel decoded-pixel limit, and 10,000-pixel dimension limit. The limit can be adjusted if necessary.
 
