@@ -16,9 +16,9 @@ COPY src ./src
 RUN python -m pip install --no-cache-dir ".[api]"
 # Comment out the lines you wish to skip
 # Since we are not using uv here, extra index URL for GPU is mandatory
-# RUN python -m pip install --no-cache-dir ".[ocr]"
-RUN python -m pip install --no-cache-dir ".[ocr-gpu]" \
-    --extra-index-url "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+RUN python -m pip install --no-cache-dir ".[ocr]"
+# RUN python -m pip install --no-cache-dir ".[ocr-gpu]" \
+#     --extra-index-url "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
 
 # Add user
 RUN groupadd --system app \
