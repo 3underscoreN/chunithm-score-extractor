@@ -1,3 +1,4 @@
+import builtins
 import logging
 import sys
 import types
@@ -10,6 +11,22 @@ from chunithm_score_extractor.ocr import PaddleOcrEngine
 
 
 class PaddleOptionsTests(unittest.TestCase):
+    def test_import_error_preserves_native_library_failure(self) -> None:
+        original_import = builtins.__import__
+        failure = ImportError("libgomp.so.1: cannot open shared object file")
+
+        def failing_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "paddleocr":
+                raise failure
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=failing_import):
+            with self.assertRaises(ModelInitializationError) as caught:
+                PaddleOcrEngine()
+
+        self.assertIn("libgomp.so.1", str(caught.exception))
+        self.assertIs(caught.exception.__cause__, failure)
+
     def test_device_is_forwarded_to_paddleocr(self) -> None:
         constructor = Mock()
         paddleocr = types.ModuleType("paddleocr")

@@ -34,22 +34,18 @@ print(result.difficulty.value)
 
 The first initialization may acquire PaddleOCR model files.
 
-After the full-screen OCR pass, the extractor reuses confident score and title
-readings when at least 80% of each reading's bounding box lies inside the
-corresponding field region. It retries an uncertain or conflicting field on an
-enlarged crop, so extraction requires one to three OCR passes. Score/header
-disagreements must still be resolved; otherwise the extractor raises an error.
-
 Success returns an `ExtractionResult`. See below for the available fields.
 
 Invalid images, unsupported layouts, uncertain readings, conflicting readings, model initialization errors, and processing failures raise errors. See the `chunithm_score_extractor.errors` module for the full list of exceptions.
 
-The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit, 25-megapixel decoded-pixel limit, and 10,000-pixel dimension limit. The limit can be adjusted if necessary.
+The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit, 25-megapixel decoded-pixel limit, and 10,000-pixel dimension limit. The limit can be adjusted during creation of the extractor object.
 
 > [!IMPORTANT]
 > There's no guarantee that OCR would be able to parse 100% matching text from the images. For example, for really long song names, or for weird character sequences, the OCR may produce incorrect or incomplete readings. Fuzzy matching to a known song database, and appropriate error handling should be applied when using the extracted results.
 
 ### Some API I guess?
+
+#### Extractor
 ```python
 class ChunithmExtractor:
     def __init__(
@@ -66,13 +62,14 @@ class ChunithmExtractor:
         ...
 ```
 
+#### OcrEngine
 ```python
 class OcrEngine(Protocol):
     def read(self, image: np.ndarray) -> Sequence[TextReading]:
         ...
 ```
 
-Some data classes and enums used by the API are defined below.
+#### Data classes and enums
 ```python
 @dataclass
 class ImageLimits:
@@ -106,23 +103,14 @@ index automatically. With `pip`, the index must be provided explicitly:
 ```powershell
 python -m pip install ".[ocr-gpu]" --extra-index-url "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
 ```
-
-Package indexes are not embedded in published Python metadata. `uv sync` and
-`uv run` enforce the project's conflicting extras, but `uv pip install` and
-`pip` do not. Choose only one extra with either pip interface.
-
 Choose the CUDA build and prerequisites for your system using the
-[PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/documentation/docs/en/install/pip/windows-pip_en.html).
-On the tested Windows RTX 2060 SUPER, CUDA 12.6 inference ran, but Paddle
-reported that its binary was built with cuDNN 9.9 while its wheel declared and
-installed cuDNN 9.5. Treat this configuration as experimental until upstream
-compatibility is resolved; do not ignore the warning for production use.
-The supplied Dockerfile installs the CPU runtime; GPU deployment needs a
-separately configured GPU-enabled image and NVIDIA container runtime.
+[PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/documentation/docs/en/install/index_en.html).
+On Debian-based systems, PaddlePaddle also needs the `libgomp1` runtime package;
+the provided Dockerfile installs it.
 
 ### Bring Your Own OCR
 
-If you prefer to use your own OCR setup (or even external API), you can implement a custom OCR engine and pass that to the extractor instead of the built-in OCR:
+If you prefer to use your own OCR setup (e.g. external APIs), you can implement a custom OCR engine and pass that to the extractor instead of the built-in OCR:
 ```python
 class CustomOCREngine:
     def read(self, image: np.ndarray) -> Sequence[TextReading]:
@@ -130,6 +118,18 @@ class CustomOCREngine:
         ...
 
 extractor = ChunithmExtractor(ocr_engine=CustomOCREngine())
+```
+The `TextReading` class is defined as below:
+
+```python
+@dataclass(frozen=True, slots=True)
+class TextReading:
+    text: str
+    confidence: float
+    left: float
+    top: float
+    right: float
+    bottom: float
 ```
 In this case, you may choose to skip installing the built-in OCR extras entirely.
 
@@ -139,7 +139,9 @@ You can set up this project as a standalone API server, and a Dockerfile is conv
 provided for containerized deployment.
 
 > [!NOTE]
-> Review the Dockerfile before deployment. If you want CPU inference, make sure to adjust the build accordingly.
+> The Dockerfile defaults to CPU inference. For GPU inference, select the GPU
+> install line instead of the CPU line and provide the required GPU runtime.
+> You also need to set `CHUNITHM_OCR_DEVICE=gpu` for GPU inference.
 
 ```shell
 docker build -t chunithm-score-extractor .
@@ -156,11 +158,18 @@ docker run --rm -p 8000:8000 chunithm-score-extractor
 }
 ```
 
-Expected input/extraction failures return HTTP 400, 413, 415, or 422 with a machine-readable `detail.code`. Internal service failures return HTTP 500. `/health/live` reports process liveness; `/health/ready` returns 503 until the OCR model has initialized. Inference is run outside the async event loop and limited to one concurrent request per process by default; set `CHUNITHM_MAX_CONCURRENCY` to adjust this per-worker limit. Put the API behind an appropriately trusted reverse proxy and authentication layer before exposing it beyond a private network.
+Paths for this API server are denoted as follows:
+| Path | Method | Description | Request | Response |
+|------|--------|-------------|---------|----------|
+| /extract | POST | Extract Chunithm score from an image | form-data with `image` file field | JSON with `score`, `song_name`, and `difficulty` |
+| /health/live | GET | Check if the process is alive | None | 200 if alive |
+| /health/ready | GET | Check if the service is ready | None | 200 if ready, 503 if not |
 
-Set `CHUNITHM_OCR_DEVICE=cpu`, `gpu`, or `gpu:0` to choose the API inference
-device. Without it, PaddleOCR selects the device. Each worker loads its own
-model and has its own concurrency limit.
+Possible error code for /extract include HTTP 400, 413, 415, or 422 with a machine-readable `detail.code`. 
+
+The API server is limited to one concurrent request per process by default. You can adjust this limit with the `CHUNITHM_MAX_CONCURRENCY` env var.
+
+It is suggested to run the API server behind a reverse proxy and implement proper authentication before exposing it beyond a private network.
 
 ## Visual pipeline walkthrough
 

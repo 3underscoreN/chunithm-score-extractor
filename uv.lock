@@ -328,7 +328,7 @@ ocr-gpu = [
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2,<2" },
-    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,<1" },
+    { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.162,<1" },
     { name = "fastapi", marker = "extra == 'dev'", specifier = ">=0.115,<1" },
     { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.16,<3" },
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=6,<8" },

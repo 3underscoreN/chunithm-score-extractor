@@ -98,7 +98,8 @@ class PaddleOcrEngine:
             raise
         except ImportError as exc:
             raise ModelInitializationError(
-                "Install the OCR dependencies with the 'ocr' extra."
+                f"Could not import OCR dependencies: {exc}. "
+                "Install the 'ocr' or 'ocr-gpu' extra if dependencies are missing."
             ) from exc
         except Exception as exc:
             raise ModelInitializationError("PaddleOCR could not initialize its models.") from exc
