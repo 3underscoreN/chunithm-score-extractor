@@ -141,7 +141,7 @@ provided for containerized deployment.
 > [!NOTE]
 > The Dockerfile defaults to CPU inference. For GPU inference, select the GPU
 > install line instead of the CPU line and provide the required GPU runtime.
-> You also need to set `CHUNITHM_OCR_DEVICE=gpu` for GPU inference.
+> You also need to set `CHUNITHM_OCR_DEVICE=gpu`, as well as passing GPU with `--gpus` flag to the `docker run` command for GPU inference.
 
 ```shell
 docker build -t chunithm-score-extractor .
