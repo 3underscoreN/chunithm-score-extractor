@@ -11,6 +11,7 @@ import numpy as np
 
 from .errors import ModelInitializationError, ProcessingError
 
+from paddleocr import PaddleOCR
 
 @dataclass(frozen=True, slots=True)
 class TextReading:
@@ -65,24 +66,9 @@ class PaddleOcrEngine:
                     category=UserWarning,
                     module=r"paddle\.utils\.cpp_extension\.extension_utils",
                 )
-                from paddleocr import PaddleOCR
-
-                if device is not None and device.startswith("gpu"):
-                    # check if PaddlePaddle is compiled with CUDA for GPU usage,
-                    # and if the numbered GPU device index is valid
-                    import paddle
-
-                    if not paddle.is_compiled_with_cuda(): # pyright: ignore[reportPrivateImportUsage]
-                        raise ModelInitializationError(
-                            "GPU requested, but PaddlePaddle was not built with CUDA. "
-                            "Use a Python environment with paddlepaddle-gpu installed; "
-                            "see the NVIDIA GPU setup in README.md."
-                        )
-                    index = int(device.split(":", 1)[1]) if ":" in device else 0
-                    if index >= paddle.device.cuda.device_count():
-                        raise ModelInitializationError(
-                            f"GPU device {index} is not available to PaddlePaddle."
-                        )
+                engine_config = {
+                  "device_type": device
+                }
 
                 # underlying OCR object initialization
                 self._ocr = PaddleOCR(
@@ -92,7 +78,8 @@ class PaddleOcrEngine:
                     use_doc_unwarping=False,
                     use_textline_orientation=False,
                     enable_mkldnn=False,
-                    device=device,
+                    engine="onnxruntime",
+                    engine_config=engine_config,
                 )
         except ModelInitializationError:
             raise

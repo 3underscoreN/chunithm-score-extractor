@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM astral/uv:python3.13-trixie-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -13,12 +13,9 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
-RUN python -m pip install --no-cache-dir ".[api]"
-# Comment out the lines you wish to skip
-# Since we are not using uv here, extra index URL for GPU is mandatory
-RUN python -m pip install --no-cache-dir ".[ocr]"
-# RUN python -m pip install --no-cache-dir ".[ocr-gpu]" \
-#     --extra-index-url "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+# Choose exactly one ONNX Runtime variant.
+RUN uv sync --extra api
+# RUN uv sync --no-group onnx-cpu --extra api --extra gpu
 
 # Add user
 RUN groupadd --system app \

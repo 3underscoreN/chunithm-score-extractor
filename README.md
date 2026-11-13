@@ -6,16 +6,16 @@ A Python library and optional self-hosted HTTP API for extracting the current-pl
 
 - Python 3.13
 - numpy, OpenCV, Pillow
-- PaddleOCR 3.7.0 with PaddlePaddle 3.3.1 (CPU/GPU build). It is possible to bring your own custom OCR engine, which we will mention below.
+- PaddleOCR 3.7.0 with ONNX Runtime (CPU or GPU build). It is possible to bring your own custom OCR engine, which we will mention below.
 - Docker (optional)
 
-Install the library and OCR runtime:
+Install the library and CPU OCR runtime with uv:
 
 ```shell
-python -m pip install ".[ocr]"
+uv sync
 ```
 
-PaddleOCR and PaddlePaddle are licensed under [Apache-2.0 license](https://github.com/PaddlePaddle/Paddle/blob/develop/LICENSE).
+For pip, specify a runtime extra as described below.
 
 ## Python API
 
@@ -91,22 +91,33 @@ class Difficulty(StrEnum):
     WORLDEND = "WORLDEND"
 ```
 
-### Using the OCR extras
+### Choosing an ONNX Runtime
 
-The `ocr` extra installs the CPU build. In order to speed up the OCR process, a separate environment with the `ocr-gpu` is available.
+`uv sync` installs the CPU runtime by default. To switch the same uv-managed
+environment to the GPU runtime, disable the default CPU group and opt in to
+the GPU extra:
 
-Use a separate environment for GPU. Do not install both extras or both Paddle builds in the same environment.
-
-When installing from this checkout, `uv` uses the configured Paddle CUDA 12.6
-index automatically. With `pip`, the index must be provided explicitly:
-
-```powershell
-python -m pip install ".[ocr-gpu]" --extra-index-url "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+```shell
+uv sync --no-group onnx-cpu --extra gpu
 ```
-Choose the CUDA build and prerequisites for your system using the
-[PaddlePaddle installation guide](https://www.paddlepaddle.org.cn/documentation/docs/en/install/index_en.html).
-On Debian-based systems, PaddlePaddle also needs the `libgomp1` runtime package;
-the provided Dockerfile installs it.
+
+To switch back, run `uv sync` again. uv removes the previously selected runtime
+when syncing. Do not install both runtimes in the same environment: they share
+the `onnxruntime` import namespace.
+
+For pip or other installers, choose exactly one extra, preferably in a fresh environment:
+
+```shell
+python -m pip install ".[cpu]"
+# Or, instead:
+python -m pip install ".[gpu]"
+```
+
+Plain `pip install .` does not install an ONNX Runtime. Pip extras only add
+dependencies and do not uninstall a previously installed runtime. Therefore, it is suggested to use a fresh
+environment when switching. 
+
+The GPU build requires a supported platform and CUDA/cuDNN setup. See [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/).
 
 ### Bring Your Own OCR
 
@@ -131,7 +142,7 @@ class TextReading:
     right: float
     bottom: float
 ```
-In this case, you may choose to skip installing the built-in OCR extras entirely.
+In this case, you may choose to skip installing an ONNX Runtime entirely.
 
 ## Optional API
 
@@ -175,11 +186,18 @@ It is suggested to run the API server behind a reverse proxy and implement prope
 
 For people that are curious on how the extractor works under the hood, a walkthrough Jupyter notebook is provided. 
 Open [pipeline_walkthrough.ipynb](./pipeline_walkthrough.ipynb) to inspect screen localization, OCR readings, field crops, and the
-final result. Install the notebook dependencies alongside **one** OCR extra only.
+final result. Install the notebook dependencies alongside **one** ONNX Runtime.
 
-For CPU, install `.[ocr,notebook]` instead. Select that environment as the
-notebook kernel, choose an image and device in the first code cell, then run
-the cells in order. The first model initialization may download model files.
+For CPU, run ```shell
+uv sync --extra notebook
+``` 
+or 
+```shell
+pip install -e "[cpu,notebook]"
+```
+Select that environment as thenotebook kernel, choose an image and device 
+in the first code cell, then run the cells in order. The first model 
+initialization may download model files.
 Notebook outputs can contain your photos and OCR text; clear them before
 sharing or committing the notebook if those images are private.
 
@@ -187,6 +205,6 @@ sharing or committing the notebook if those images are private.
 Run the unit tests with the development dependencies:
 
 ```shell
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,cpu]"
 python -m unittest discover -s tests -v
 ```
