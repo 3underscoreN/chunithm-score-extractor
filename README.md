@@ -188,7 +188,8 @@ For people that are curious on how the extractor works under the hood, a walkthr
 Open [pipeline_walkthrough.ipynb](./pipeline_walkthrough.ipynb) to inspect screen localization, OCR readings, field crops, and the
 final result. Install the notebook dependencies alongside **one** ONNX Runtime.
 
-For CPU, run ```shell
+For CPU, run 
+```shell
 uv sync --extra notebook
 ``` 
 or 
