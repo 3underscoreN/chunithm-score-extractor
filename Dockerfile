@@ -46,6 +46,10 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-group onnx-cpu \
     --extra api --extra "${ORT_VARIANT}"
 
+# uv sync installs into /app/.venv, so put its entry points (uvicorn, ...) on PATH.
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Add user
 RUN groupadd --system app \
     && useradd --system --gid app --create-home app \
     && mkdir -p /opt/models \
