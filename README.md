@@ -117,7 +117,10 @@ python -m pip install ".[openvino]"  # Intel OpenVINO
 
 The built-in OCR engine reads the `DEVICE` environment variable when the `device` argument is not set. It defaults to `cpu`. Accepted values are `cpu`, `gpu`, `gpu:0`, `openvino`, `openvino:cpu`, `openvino:gpu`, `openvino:npu`, and `openvino:auto`. OpenVINO's `auto` mode lets the runtime choose an Intel CPU, GPU, or NPU.
 
-The GPU build needs a supported platform with CUDA and cuDNN. OpenVINO wheels are available for Linux x86_64 and Windows; Apple Silicon uses the CPU runtime. See the [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) for platform requirements and execution provider setup.
+> [!NOTE]
+> The `openvino` extra installs `onnxruntime-openvino`, which is deprecated. We plan to move it to `onnxruntime-ep-openvino`, but that migration is not part of this release.
+
+ONNX Runtime 1.31 uses CUDA 13 and cuDNN, so the GPU build expects both. OpenVINO wheels are available for Linux x86_64 and Windows; Apple Silicon uses the CPU runtime. See the [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) for platform requirements and execution provider setup.
 
 ### Bring Your Own OCR
 
@@ -149,11 +152,18 @@ In this case, you may choose to skip installing an ONNX Runtime entirely.
 
 ## Optional API
 
-You can set up this project as a standalone API server, and a Dockerfile is conveniently
-provided for containerized deployment.
+You can set up this project as a standalone API server, and a Dockerfile is conveniently provided for containerized deployment.
+
+You can also use a prebuilt image from ghcr.io.
+
+> [!WARNING]
+> The published images are experimental and may not work on your hardware. Building your own image is the better option.
 
 > [!NOTE]
-> Each published image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` points to the CPU image. The GPU image includes the CUDA 12.9 and cuDNN runtime, but the host still needs a compatible NVIDIA driver.
+> Each image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` is the CPU image. The GPU image includes CUDA 13.5 and cuDNN. Only that image needs an NVIDIA driver.
+
+> [!IMPORTANT]
+> The OpenVINO image is untested. `onnxruntime-openvino` is deprecated, and we plan to migrate to `onnxruntime-ep-openvino`. That migration is not included yet.
 
 ```shell
 # CPU
@@ -176,7 +186,7 @@ docker build --build-arg ORT_VARIANT=openvino -t chunithm-score-extractor:openvi
 
 The published images target `linux/amd64`. On an Apple Silicon host, add `--platform linux/amd64` to the local build command.
 
-The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set in the environment variable.
+The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set.
 
 `POST /extract` accepts `multipart/form-data` with an `image` file field. It returns:
 
