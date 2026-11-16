@@ -2,16 +2,17 @@ from dataclasses import dataclass
 import json
 import logging
 import re
-from typing import Protocol, Sequence
+from typing import Literal, Protocol, Sequence
 import warnings
-
-from typing import Literal
 
 import numpy as np
 
 from .errors import ModelInitializationError, ProcessingError
 
-from paddleocr import PaddleOCR
+
+_DEVICE_PATTERN = re.compile(r"cpu|gpu(?::\d+)?|openvino(?::(?:cpu|gpu|npu|auto))?")
+_MODEL_SIZES = ("tiny", "small", "medium")
+
 
 @dataclass(frozen=True, slots=True)
 class TextReading:
@@ -27,14 +28,82 @@ class OcrEngine(Protocol):
     def read(self, image: np.ndarray) -> Sequence[TextReading]: ...
 
 
+def _engine_config(device: str) -> dict[str, object]:
+    """Build the ONNX Runtime engine configuration for the requested device."""
+    try:
+        import onnxruntime as ort
+    except ImportError as exc:
+        raise ModelInitializationError(
+            "ONNX Runtime is not installed. Install the 'cpu', 'gpu', or "
+            "'openvino' extra."
+        ) from exc
+
+    available = set(ort.get_available_providers())
+    if device == "cpu":
+        return {"providers": ["CPUExecutionProvider"]}
+
+    if device.startswith("gpu"):
+        if "CUDAExecutionProvider" not in available:
+            raise ModelInitializationError(
+                "GPU requested, but the installed ONNX Runtime has no CUDA "
+                "provider. Use the 'gpu' extra, or set DEVICE=cpu."
+            )
+        index = int(device.split(":", 1)[1]) if ":" in device else 0
+        return {
+            "providers": ["CUDAExecutionProvider", "CPUExecutionProvider"],
+            "provider_options": [{"device_id": index}, {}],
+        }
+
+    if device.startswith("openvino"):
+        if "OpenVINOExecutionProvider" not in available:
+            raise ModelInitializationError(
+                "OpenVINO requested, but the installed ONNX Runtime has no "
+                "OpenVINO provider. Use the 'openvino' extra, or set "
+                "DEVICE=cpu."
+            )
+        target = device.split(":", 1)[1].upper() if ":" in device else "AUTO"
+        return {
+            "providers": ["OpenVINOExecutionProvider", "CPUExecutionProvider"],
+            "provider_options": [{"device_type": target}, {}],
+        }
+
+    raise ValueError(f"Unsupported OCR device: {device!r}")
+
+
 class PaddleOcrEngine:
     """
     A PaddleOCR-based implementation of the OcrEngine protocol.
+
+    PaddleOCR runs its detection and recognition models through ONNX Runtime.
+    The device can be ``cpu``, ``gpu``, ``gpu:<index>``, ``openvino``, or
+    ``openvino:<device>``.
     """
-    def __init__(self, *, size: Literal["tiny", "small", "medium"] = "small", device: str | None = None) -> None:
-        # simply validating the device string format
-        if device is not None and not re.fullmatch(r"cpu|gpu(?::\d+)?", device):
-            raise ValueError("device must be 'cpu', 'gpu', or 'gpu:<index>'.")
+
+    def __init__(
+        self,
+        *,
+        size: Literal["tiny", "small", "medium"] = "small",
+        device: str | None = None,
+    ) -> None:
+        if size not in _MODEL_SIZES:
+            raise ValueError("size must be 'tiny', 'small', or 'medium'.")
+
+        normalized_device = "cpu" if device is None else device.lower()
+        if not _DEVICE_PATTERN.fullmatch(normalized_device):
+            raise ValueError(
+                "device must be 'cpu', 'gpu', 'gpu:<index>', 'openvino', "
+                "or 'openvino:<device>'."
+            )
+
+        engine_config = _engine_config(normalized_device)
+        try:
+            from paddleocr import PaddleOCR
+        except ImportError as exc:
+            raise ModelInitializationError(
+                f"Could not import OCR dependencies: {exc}. "
+                "Install the 'cpu', 'gpu', or 'openvino' extra if dependencies "
+                "are missing."
+            ) from exc
 
         # this is a filter to suppress warnings and info messages from PaddleOCR startup
         class StartupNoiseFilter(logging.Filter):
@@ -42,7 +111,9 @@ class PaddleOcrEngine:
                 message = record.getMessage()
                 if record.levelno == logging.WARNING and (
                     message.startswith("Checking connectivity to the model hosters")
-                    or message.startswith("Connectivity check to the model hoster has been skipped")
+                    or message.startswith(
+                        "Connectivity check to the model hoster has been skipped"
+                    )
                 ):
                     return False
                 if record.levelno != logging.INFO:
@@ -66,9 +137,6 @@ class PaddleOcrEngine:
                     category=UserWarning,
                     module=r"paddle\.utils\.cpp_extension\.extension_utils",
                 )
-                engine_config = {
-                  "device_type": device
-                }
 
                 # underlying OCR object initialization
                 self._ocr = PaddleOCR(
@@ -86,10 +154,13 @@ class PaddleOcrEngine:
         except ImportError as exc:
             raise ModelInitializationError(
                 f"Could not import OCR dependencies: {exc}. "
-                "Install the 'ocr' or 'ocr-gpu' extra if dependencies are missing."
+                "Install the 'cpu', 'gpu', or 'openvino' extra if dependencies "
+                "are missing."
             ) from exc
         except Exception as exc:
-            raise ModelInitializationError("PaddleOCR could not initialize its models.") from exc
+            raise ModelInitializationError(
+                "PaddleOCR could not initialize its models."
+            ) from exc
         finally:
             paddle_logger.removeFilter(noise_filter)
 
@@ -145,9 +216,9 @@ def _result_mapping(output: object) -> dict:
     """
     if isinstance(output, dict):
         return output
-    
+
     if hasattr(output, "json"):
-        serialized = output.json # pyright: ignore[reportAttributeAccessIssue]
+        serialized = output.json  # pyright: ignore[reportAttributeAccessIssue]
         if callable(serialized):
             serialized = serialized()
         if isinstance(serialized, str):
@@ -158,12 +229,12 @@ def _result_mapping(output: object) -> dict:
                 return payload
 
     if hasattr(output, "to_dict"):
-        value = output.to_dict() # pyright: ignore[reportAttributeAccessIssue]
+        value = output.to_dict()  # pyright: ignore[reportAttributeAccessIssue]
         if isinstance(value, dict):
             payload = value.get("res", value)
             if isinstance(payload, dict):
                 return payload
-            
+
     raise ProcessingError("PaddleOCR returned an unsupported result.")
 
 
@@ -208,8 +279,10 @@ def _parse_result(output: dict) -> tuple[TextReading, ...]:
         # scores
         score = float(confidence)
         if not np.isfinite(score) or not 0 <= score <= 1:
-            raise ProcessingError("PaddleOCR returned an invalid recognition confidence.")
-        
+            raise ProcessingError(
+                "PaddleOCR returned an invalid recognition confidence."
+            )
+
         readings.append(
             TextReading(
                 text=str(text),

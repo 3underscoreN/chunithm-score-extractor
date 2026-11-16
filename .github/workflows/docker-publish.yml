@@ -15,6 +15,10 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cpu, gpu, openvino]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -34,19 +38,25 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
+          flavor: |
+            latest=false
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=ref,event=tag
-            type=raw,value=latest
+            type=semver,pattern={{version}},suffix=-${{ matrix.variant }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-${{ matrix.variant }}
+            type=ref,event=tag,suffix=-${{ matrix.variant }}
+            type=raw,value=latest-${{ matrix.variant }}
+            type=raw,value=latest,enable=${{ matrix.variant == 'cpu' }}
 
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
+          platforms: linux/amd64
           push: true
+          build-args: |
+            ORT_VARIANT=${{ matrix.variant }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}

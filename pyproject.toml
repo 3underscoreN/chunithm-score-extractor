@@ -24,6 +24,9 @@ cpu = [
 gpu = [
     "onnxruntime-gpu>=1.31.1",
 ]
+openvino = [
+    "onnxruntime-openvino>=1.24.1",
+]
 notebook = [
     "ipykernel>=6,<8",
     "matplotlib>=3.9,<4",
@@ -49,8 +52,8 @@ onnx-cpu = [
 [tool.uv]
 default-groups = ["onnx-cpu"]
 conflicts = [
-    [{ group = "onnx-cpu" }, { extra = "gpu" }],
-    [{ extra = "cpu" }, { extra = "gpu" }],
+    [{ group = "onnx-cpu" }, { extra = "gpu" }, { extra = "openvino" }],
+    [{ extra = "cpu" }, { extra = "gpu" }, { extra = "openvino" }],
 ]
 
 [tool.setuptools.packages.find]
