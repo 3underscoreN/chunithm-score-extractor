@@ -10,7 +10,8 @@ FROM astral/uv:python3.13-trixie-slim AS base-cpu
 
 FROM base-cpu AS base-openvino
 
-FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04 AS base-gpu
+# ONNX Runtime 1.31+ needs CUDA 13 for the GPU build.
+FROM nvidia/cuda:13.5.0-cudnn-runtime-ubuntu26.04 AS base-gpu
 
 FROM base-${ORT_VARIANT} AS final
 
