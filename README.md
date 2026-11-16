@@ -46,10 +46,11 @@ The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit
 ### Some API I guess?
 
 #### Extractor
+
 ```python
 class ChunithmExtractor:
     def __init__(
-      self, 
+      self,
       ocr: OcrEngine | None = None, # Custom OCR engine to use instead of the built-in one, see below for details
       image_limits: ImageLimits = ImageLimits(), # Limits for input image size and dimensions
       confidence_threshold: float = CONFIDENCE_THRESHOLD, # Minimum confidence for OCR readings to be considered valid, defaults to 0.75
@@ -58,12 +59,13 @@ class ChunithmExtractor:
       device: str | None = None # Defaults to the DEVICE environment variable, then "cpu". Only used by the built-in OCR engine.
     ):
         ...
-    
+
     def extract(self, image_bytes: bytes) -> ExtractionResult:
         ...
 ```
 
 #### OcrEngine
+
 ```python
 class OcrEngine(Protocol):
     def read(self, image: np.ndarray) -> Sequence[TextReading]:
@@ -71,6 +73,7 @@ class OcrEngine(Protocol):
 ```
 
 #### Data classes and enums
+
 ```python
 @dataclass
 class ImageLimits:
@@ -119,6 +122,7 @@ The GPU build needs a supported platform with CUDA and cuDNN. OpenVINO wheels ar
 ### Bring Your Own OCR
 
 If you prefer to use your own OCR setup (e.g. external APIs), you can implement a custom OCR engine and pass that to the extractor instead of the built-in OCR:
+
 ```python
 class CustomOCREngine:
     def read(self, image: np.ndarray) -> Sequence[TextReading]:
@@ -127,6 +131,7 @@ class CustomOCREngine:
 
 extractor = ChunithmExtractor(ocr=CustomOCREngine())
 ```
+
 The `TextReading` class is defined as below:
 
 ```python
@@ -139,6 +144,7 @@ class TextReading:
     right: float
     bottom: float
 ```
+
 In this case, you may choose to skip installing an ONNX Runtime entirely.
 
 ## Optional API
@@ -147,17 +153,17 @@ You can set up this project as a standalone API server, and a Dockerfile is conv
 provided for containerized deployment.
 
 > [!NOTE]
-> Each published image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` points to the CPU image. The GPU image includes the CUDA 12.9 and cuDNN runtime, but the host still needs a compatible NVIDIA driver. The OpenVINO image uses `DEVICE=openvino` to let OpenVINO choose an Intel CPU, GPU, or NPU. `DEVICE` only affects the built-in OCR engine.
+> Each published image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` points to the CPU image. The GPU image includes the CUDA 12.9 and cuDNN runtime, but the host still needs a compatible NVIDIA driver.
 
 ```shell
 # CPU
-docker run --rm -p 8000:8000 ghcr.io/OWNER/REPO:latest
+docker run --rm -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:latest
 
 # NVIDIA GPU
-docker run --rm --gpus all -e DEVICE=gpu -p 8000:8000 ghcr.io/OWNER/REPO:latest-gpu
+docker run --rm --gpus all -e DEVICE=gpu -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:latest-gpu
 
 # OpenVINO
-docker run --rm -e DEVICE=openvino -p 8000:8000 ghcr.io/OWNER/REPO:latest-openvino
+docker run --rm -e DEVICE=openvino -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:latest-openvino
 ```
 
 To build a variant locally, pass it as a build argument:
@@ -170,7 +176,7 @@ docker build --build-arg ORT_VARIANT=openvino -t chunithm-score-extractor:openvi
 
 The published images target `linux/amd64`. On an Apple Silicon host, add `--platform linux/amd64` to the local build command.
 
-The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set.
+The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set in the environment variable.
 
 `POST /extract` accepts `multipart/form-data` with an `image` file field. It returns:
 
@@ -183,11 +189,12 @@ The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set.
 ```
 
 Paths for this API server are denoted as follows:
-| Path | Method | Description | Request | Response |
-|------|--------|-------------|---------|----------|
-| /extract | POST | Extract Chunithm score from an image | form-data with `image` file field | JSON with `score`, `song_name`, and `difficulty` |
-| /health/live | GET | Check if the process is alive | None | 200 if alive |
-| /health/ready | GET | Check if the service is ready | None | 200 if ready, 503 if not |
+
+| Path          | Method | Description                          | Request                           | Response                                         |
+| ------------- | ------ | ------------------------------------ | --------------------------------- | ------------------------------------------------ |
+| /extract      | POST   | Extract Chunithm score from an image | form-data with `image` file field | JSON with `score`, `song_name`, and `difficulty` |
+| /health/live  | GET    | Check if the process is alive        | None                              | 200 if alive                                     |
+| /health/ready | GET    | Check if the service is ready        | None                              | 200 if ready, 503 if not                         |
 
 `/extract` can return HTTP 400, 413, 415, or 422 with a machine-readable `detail.code`.
 
@@ -199,14 +206,18 @@ Run the API server behind a reverse proxy and add authentication before exposing
 
 To see how the extractor works, open [pipeline_walkthrough.ipynb](./pipeline_walkthrough.ipynb). It walks through screen localization, OCR readings, field crops, and the final result. Install the notebook dependencies alongside one ONNX Runtime extra.
 
-For CPU, run 
+For CPU, run
+
 ```shell
 uv sync --extra notebook
-``` 
-or 
+```
+
+or
+
 ```shell
 pip install -e "[cpu,notebook]"
 ```
+
 Select that environment as the notebook kernel, choose an image and device
 in the first code cell, then run the cells in order. The first model
 initialization may download model files.
@@ -214,6 +225,7 @@ Notebook outputs can contain your photos and OCR text; clear them before
 sharing or committing the notebook if those images are private.
 
 ## Testing
+
 Run the unit tests with the development dependencies:
 
 ```shell
