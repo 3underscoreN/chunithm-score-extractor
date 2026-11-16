@@ -114,7 +114,9 @@ def create_app(extractor: ImageExtractor | None = None, max_concurrency: int = 1
         nonlocal instance, initialization_error
         if instance is None:
             try:
-                device = os.environ.get("CHUNITHM_OCR_DEVICE")
+                device = os.environ.get("DEVICE") or os.environ.get(
+                    "CHUNITHM_OCR_DEVICE"
+                )
                 instance = await run_in_threadpool(ChunithmExtractor, device=device)
             except ExtractionError as exc:
                 initialization_error = exc

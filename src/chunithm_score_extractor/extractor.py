@@ -1,6 +1,6 @@
+import os
 import re
 from collections.abc import Sequence
-
 from typing import Literal
 
 import cv2
@@ -17,7 +17,6 @@ from .image import ImageLimits, decode_image
 from .layout import SCREEN_HEIGHT, SCREEN_WIDTH, rectify_screen
 from .models import Difficulty, ExtractionResult
 from .ocr import OcrEngine, PaddleOcrEngine, TextReading
-
 
 CONFIDENCE_THRESHOLD = 0.75
 REGION_OVERLAP_THRESHOLD = 0.80
@@ -36,6 +35,7 @@ class ChunithmExtractor:
     """
     The ChunithmExtractor class.
     """
+
     def __init__(
         self,
         ocr: OcrEngine | None = None,
@@ -59,13 +59,20 @@ class ChunithmExtractor:
         size : Literal["tiny", "small", "medium"], optional
             The size of the OCR model to use if a custom engine is not provided.
         device : str | None, optional
-            The device to use for the OCR engine if a custom engine is not provided.
+            The ONNX Runtime device for the built-in OCR engine. Defaults to
+            the ``DEVICE`` environment variable, then ``"cpu"``. Examples are
+            ``"cpu"``, ``"gpu:0"``, and ``"openvino"``.
         """
         if not 0 <= confidence_threshold <= 1:
             raise ValueError("confidence_threshold must be between 0 and 1.")
         if ocr is not None and device is not None:
             raise ValueError("device cannot be specified with a custom OCR engine.")
-        self._ocr = ocr if ocr is not None else PaddleOcrEngine(size=size, device=device)
+        effective_device = device or os.environ.get("DEVICE")
+        self._ocr = (
+            ocr
+            if ocr is not None
+            else PaddleOcrEngine(size=size, device=effective_device)
+        )
         self._image_limits = image_limits
         self._confidence_threshold = confidence_threshold
 
@@ -106,7 +113,9 @@ class ChunithmExtractor:
         # First pass: perform OCR on the entire screen to identify potential anchors and readings
         readings = _read_ocr(self._ocr, screen)
         # Get possible anchors
-        score_anchor, rank_anchor = _layout_anchors(readings, self._confidence_threshold)
+        score_anchor, rank_anchor = _layout_anchors(
+            readings, self._confidence_threshold
+        )
 
         # Get the difficulty lines within the specified region
         difficulty_lines = _in_region(readings, (0.65, 0.025, 1.0, 0.15))
@@ -114,7 +123,8 @@ class ChunithmExtractor:
         difficulty = _extract_difficulty(difficulty_lines, self._confidence_threshold)
         # Ensure only one difficulty anchor is identified
         difficulty_anchors = [
-            line for line in difficulty_lines
+            line
+            for line in difficulty_lines
             if line.confidence >= self._confidence_threshold
             and _difficulty_in_text(line.text) == {difficulty}
         ]
@@ -136,26 +146,36 @@ class ChunithmExtractor:
             _extract_score(first_score_lines, self._confidence_threshold)
 
             # if no exception is raised, the first score lines are valid
-            score = _current_score(first_score_lines, header_lines, self._confidence_threshold)
+            score = _current_score(
+                first_score_lines, header_lines, self._confidence_threshold
+            )
 
             if any(
                 line.confidence < self._confidence_threshold
                 and _SCORE_PATTERN.search(line.text)
                 for line in first_score_lines
-            ): # if any score line is below the confidence threshold and contains a score pattern
-                raise UncertainResultError("A score reading is below the confidence threshold.")
+            ):  # if any score line is below the confidence threshold and contains a score pattern
+                raise UncertainResultError(
+                    "A score reading is below the confidence threshold."
+                )
         except (UncertainResultError, ConflictingReadingsError) as exc:
-            score_lines = _in_region(_read_region(self._ocr, screen, score_region), score_region)
+            score_lines = _in_region(
+                _read_region(self._ocr, screen, score_region), score_region
+            )
             if isinstance(exc, ConflictingReadingsError):
                 # Do not resolve a known disagreement using only the original header
                 _extract_score(score_lines, self._confidence_threshold)
 
-            score = _current_score(score_lines, header_lines, self._confidence_threshold)
+            score = _current_score(
+                score_lines, header_lines, self._confidence_threshold
+            )
 
         # title extraction
         first_title_lines = _title_candidates(
             _overlapping_region(readings, title_region),
-            readings, difficulty_anchor, self._confidence_threshold,
+            readings,
+            difficulty_anchor,
+            self._confidence_threshold,
         )
         try:
             song_name = _extract_title(first_title_lines, self._confidence_threshold)
@@ -165,7 +185,9 @@ class ChunithmExtractor:
             song_name = _extract_title(
                 _title_candidates(
                     _in_region(title_lines, title_region),
-                    readings, difficulty_anchor, self._confidence_threshold,
+                    readings,
+                    difficulty_anchor,
+                    self._confidence_threshold,
                 ),
                 self._confidence_threshold,
             )
@@ -257,9 +279,12 @@ def _title_candidates(
         The candidate title lines that meet the criteria.
     """
     return tuple(
-        line for line in lines
+        line
+        for line in lines
         if line.top / SCREEN_HEIGHT <= difficulty_anchor.bottom / SCREEN_HEIGHT + 0.027
-        and not _is_cabinet_banner_fragment(line, screen_readings, difficulty_anchor, threshold)
+        and not _is_cabinet_banner_fragment(
+            line, screen_readings, difficulty_anchor, threshold
+        )
     )
 
 
@@ -282,7 +307,7 @@ def _is_cabinet_banner_fragment(
         The difficulty anchor reading.
     threshold : float
         The confidence threshold for considering a reading.
-    
+
     Returns
     -------
     bool
@@ -349,11 +374,12 @@ def _layout_anchors(
         (score, rank)
         for score in scores
         for rank in ranks
-        if rank.left > score.right
-        and abs(_center(score)[1] - _center(rank)[1]) <= 0.06
+        if rank.left > score.right and abs(_center(score)[1] - _center(rank)[1]) <= 0.06
     ]
     if len(pairs) != 1:
-        raise UnsupportedLayoutError("The photographed screen does not match the known layout.")
+        raise UnsupportedLayoutError(
+            "The photographed screen does not match the known layout."
+        )
     return pairs[0]
 
 
@@ -440,7 +466,7 @@ def _read_ocr(engine: OcrEngine, image: np.ndarray) -> Sequence[TextReading]:
     """
     Reads text from an image using the specified OCR engine.
 
-    Unlike `_read_region`, this function operates on the entire image provided 
+    Unlike `_read_region`, this function operates on the entire image provided
     and does not perform any cropping or scaling.
 
     Parameters
@@ -508,7 +534,9 @@ def _extract_score(lines: Sequence[TextReading], threshold: float) -> int:
     if len(values) > 1:
         raise ConflictingReadingsError("OCR returned conflicting current-play scores.")
     if not values:
-        raise UncertainResultError("The current-play score could not be read confidently.")
+        raise UncertainResultError(
+            "The current-play score could not be read confidently."
+        )
     return values.pop()
 
 
@@ -546,10 +574,11 @@ def _current_score(
         If the score cannot be determined confidently.
     """
 
-    # Filter header lines to include only those that likely contain the score, 
+    # Filter header lines to include only those that likely contain the score,
     # excluding high scores
     header_scores = [
-        line for line in header_lines
+        line
+        for line in header_lines
         if re.search(r"\bSCORE\s*[:：]", line.text, re.IGNORECASE)
         and "HIGH" not in line.text.upper()
     ]
@@ -591,22 +620,27 @@ def _extract_title(lines: Sequence[TextReading], threshold: float) -> str:
     """
     candidates = [line for line in lines if line.text.strip()]
     if not candidates:
-        raise UncertainResultError("The visible song title could not be read confidently.")
+        raise UncertainResultError(
+            "The visible song title could not be read confidently."
+        )
 
     first = min(candidates, key=lambda line: line.top)
     height = max(1.0, first.bottom - first.top)
     title_lines = [
-        line for line in candidates
-        if abs(line.top - first.top) <= height * 0.5
+        line for line in candidates if abs(line.top - first.top) <= height * 0.5
     ]
     if any(line.confidence < threshold for line in title_lines):
-        raise UncertainResultError("The visible song title could not be read confidently.")
+        raise UncertainResultError(
+            "The visible song title could not be read confidently."
+        )
     normalized = {_normalize_title(line.text) for line in title_lines}
     normalized.discard("")
     if len(normalized) > 1:
         raise ConflictingReadingsError("OCR returned conflicting song-title readings.")
     if not normalized:
-        raise UncertainResultError("The visible song title could not be read confidently.")
+        raise UncertainResultError(
+            "The visible song title could not be read confidently."
+        )
     return normalized.pop()
 
 
@@ -653,7 +687,9 @@ def _difficulty_in_text(text: str) -> set[Difficulty]:
         The set of difficulty levels found in the text.
     """
     text = text.upper().replace(" ", "")
-    found = {difficulty for name, difficulty in _DIFFICULTY_NAMES.items() if name in text}
+    found = {
+        difficulty for name, difficulty in _DIFFICULTY_NAMES.items() if name in text
+    }
     if _WORLD_END_PATTERN.search(text):
         found.add(Difficulty.WORLDEND)
     return found

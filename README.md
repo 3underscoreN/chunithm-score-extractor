@@ -6,7 +6,7 @@ A Python library and optional self-hosted HTTP API for extracting the current-pl
 
 - Python 3.13
 - numpy, OpenCV, Pillow
-- PaddleOCR 3.7.0 with ONNX Runtime (CPU or GPU build). It is possible to bring your own custom OCR engine, which we will mention below.
+- PaddleOCR 3.7.0 running on ONNX Runtime. CPU, NVIDIA GPU, and Intel OpenVINO runtimes are supported, and you can also bring your own custom OCR engine.
 - Docker (optional)
 
 Install the library and CPU OCR runtime with uv:
@@ -32,7 +32,7 @@ print(result.song_name)
 print(result.difficulty.value)
 ```
 
-The first initialization may acquire PaddleOCR model files.
+The first initialization downloads PaddleOCR model files.
 
 Success returns an `ExtractionResult`. See below for the available fields.
 
@@ -50,11 +50,12 @@ The library accepts JPEG, PNG, and WebP bytes, with a default 15 MiB input limit
 class ChunithmExtractor:
     def __init__(
       self, 
-      ocr_engine: OcrEngine | None = None, # Custom OCR engine to use instead of the built-in one, see below for details
+      ocr: OcrEngine | None = None, # Custom OCR engine to use instead of the built-in one, see below for details
       image_limits: ImageLimits = ImageLimits(), # Limits for input image size and dimensions
       confidence_threshold: float = CONFIDENCE_THRESHOLD, # Minimum confidence for OCR readings to be considered valid, defaults to 0.75
       *,
-      device: str | None = None # Device to run the OCR on, e.g., "cpu" or "gpu:0", defaults to None. NOTE: Only used when the built-in OCR engine is used
+      size: Literal["tiny", "small", "medium"] = "small", # Built-in OCR model size, defaults to "small"
+      device: str | None = None # Defaults to the DEVICE environment variable, then "cpu". Only used by the built-in OCR engine.
     ):
         ...
     
@@ -93,31 +94,27 @@ class Difficulty(StrEnum):
 
 ### Choosing an ONNX Runtime
 
-`uv sync` installs the CPU runtime by default. To switch the same uv-managed
-environment to the GPU runtime, disable the default CPU group and opt in to
-the GPU extra:
+`uv sync` installs the CPU runtime by default. To use the GPU runtime in the same uv-managed environment, disable the default CPU group and select the GPU extra:
 
 ```shell
 uv sync --no-group onnx-cpu --extra gpu
 ```
 
-To switch back, run `uv sync` again. uv removes the previously selected runtime
-when syncing. Do not install both runtimes in the same environment: they share
-the `onnxruntime` import namespace.
+Use `uv sync --no-group onnx-cpu --extra openvino` for the OpenVINO runtime. Running plain `uv sync` again restores the CPU runtime. Keep one runtime per environment because all three packages provide the `onnxruntime` import.
 
-For pip or other installers, choose exactly one extra, preferably in a fresh environment:
+For pip, choose one extra in a fresh environment:
 
 ```shell
-python -m pip install ".[cpu]"
-# Or, instead:
-python -m pip install ".[gpu]"
+python -m pip install ".[cpu]"       # CPU
+python -m pip install ".[gpu]"       # NVIDIA GPU
+python -m pip install ".[openvino]"  # Intel OpenVINO
 ```
 
-Plain `pip install .` does not install an ONNX Runtime. Pip extras only add
-dependencies and do not uninstall a previously installed runtime. Therefore, it is suggested to use a fresh
-environment when switching. 
+`pip install .` alone does not install an ONNX Runtime. Extras only add packages, so pip will not replace a runtime that is already installed.
 
-The GPU build requires a supported platform and CUDA/cuDNN setup. See [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/).
+The built-in OCR engine reads the `DEVICE` environment variable when the `device` argument is not set. It defaults to `cpu`. Accepted values are `cpu`, `gpu`, `gpu:0`, `openvino`, `openvino:cpu`, `openvino:gpu`, `openvino:npu`, and `openvino:auto`. OpenVINO's `auto` mode lets the runtime choose an Intel CPU, GPU, or NPU.
+
+The GPU build needs a supported platform with CUDA and cuDNN. OpenVINO wheels are available for Linux x86_64 and Windows; Apple Silicon uses the CPU runtime. See the [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) for platform requirements and execution provider setup.
 
 ### Bring Your Own OCR
 
@@ -128,7 +125,7 @@ class CustomOCREngine:
         # Implement your OCR logic here
         ...
 
-extractor = ChunithmExtractor(ocr_engine=CustomOCREngine())
+extractor = ChunithmExtractor(ocr=CustomOCREngine())
 ```
 The `TextReading` class is defined as below:
 
@@ -150,14 +147,30 @@ You can set up this project as a standalone API server, and a Dockerfile is conv
 provided for containerized deployment.
 
 > [!NOTE]
-> The Dockerfile defaults to CPU inference. For GPU inference, select the GPU
-> install line instead of the CPU line and provide the required GPU runtime.
-> You also need to set `CHUNITHM_OCR_DEVICE=gpu`, as well as passing GPU with `--gpus` flag to the `docker run` command for GPU inference.
+> Each published image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` points to the CPU image. The GPU image includes the CUDA 12.9 and cuDNN runtime, but the host still needs a compatible NVIDIA driver. The OpenVINO image uses `DEVICE=openvino` to let OpenVINO choose an Intel CPU, GPU, or NPU. `DEVICE` only affects the built-in OCR engine.
 
 ```shell
-docker build -t chunithm-score-extractor .
-docker run --rm -p 8000:8000 chunithm-score-extractor
+# CPU
+docker run --rm -p 8000:8000 ghcr.io/OWNER/REPO:latest
+
+# NVIDIA GPU
+docker run --rm --gpus all -e DEVICE=gpu -p 8000:8000 ghcr.io/OWNER/REPO:latest-gpu
+
+# OpenVINO
+docker run --rm -e DEVICE=openvino -p 8000:8000 ghcr.io/OWNER/REPO:latest-openvino
 ```
+
+To build a variant locally, pass it as a build argument:
+
+```shell
+docker build --build-arg ORT_VARIANT=cpu -t chunithm-score-extractor:cpu .
+docker build --build-arg ORT_VARIANT=gpu -t chunithm-score-extractor:gpu .
+docker build --build-arg ORT_VARIANT=openvino -t chunithm-score-extractor:openvino .
+```
+
+The published images target `linux/amd64`. On an Apple Silicon host, add `--platform linux/amd64` to the local build command.
+
+The API also reads `CHUNITHM_OCR_DEVICE` when `DEVICE` is not set.
 
 `POST /extract` accepts `multipart/form-data` with an `image` file field. It returns:
 
@@ -176,17 +189,15 @@ Paths for this API server are denoted as follows:
 | /health/live | GET | Check if the process is alive | None | 200 if alive |
 | /health/ready | GET | Check if the service is ready | None | 200 if ready, 503 if not |
 
-Possible error code for /extract include HTTP 400, 413, 415, or 422 with a machine-readable `detail.code`. 
+`/extract` can return HTTP 400, 413, 415, or 422 with a machine-readable `detail.code`.
 
 The API server is limited to one concurrent request per process by default. You can adjust this limit with the `CHUNITHM_MAX_CONCURRENCY` env var.
 
-It is suggested to run the API server behind a reverse proxy and implement proper authentication before exposing it beyond a private network.
+Run the API server behind a reverse proxy and add authentication before exposing it beyond a private network.
 
 ## Visual pipeline walkthrough
 
-For people that are curious on how the extractor works under the hood, a walkthrough Jupyter notebook is provided. 
-Open [pipeline_walkthrough.ipynb](./pipeline_walkthrough.ipynb) to inspect screen localization, OCR readings, field crops, and the
-final result. Install the notebook dependencies alongside **one** ONNX Runtime.
+To see how the extractor works, open [pipeline_walkthrough.ipynb](./pipeline_walkthrough.ipynb). It walks through screen localization, OCR readings, field crops, and the final result. Install the notebook dependencies alongside one ONNX Runtime extra.
 
 For CPU, run 
 ```shell
@@ -196,8 +207,8 @@ or
 ```shell
 pip install -e "[cpu,notebook]"
 ```
-Select that environment as thenotebook kernel, choose an image and device 
-in the first code cell, then run the cells in order. The first model 
+Select that environment as the notebook kernel, choose an image and device
+in the first code cell, then run the cells in order. The first model
 initialization may download model files.
 Notebook outputs can contain your photos and OCR text; clear them before
 sharing or committing the notebook if those images are private.
