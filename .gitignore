@@ -9,3 +9,4 @@ dist/
 *.egg-info/
 val/
 pg.py
+.DS_Store
