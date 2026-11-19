@@ -10,7 +10,7 @@ import numpy as np
 from .errors import ModelInitializationError, ProcessingError
 
 
-_DEVICE_PATTERN = re.compile(r"cpu|gpu(?::\d+)?|openvino(?::(?:cpu|gpu|npu|auto))?")
+_DEVICE_PATTERN = re.compile(r"cpu|gpu(?::\d+)?")
 _MODEL_SIZES = ("tiny", "small", "medium")
 
 
@@ -34,8 +34,7 @@ def _engine_config(device: str) -> dict[str, object]:
         import onnxruntime as ort
     except ImportError as exc:
         raise ModelInitializationError(
-            "ONNX Runtime is not installed. Install the 'cpu', 'gpu', or "
-            "'openvino' extra."
+            "ONNX Runtime is not installed. Install the 'cpu' or 'gpu' extra."
         ) from exc
 
     available = set(ort.get_available_providers())
@@ -54,19 +53,6 @@ def _engine_config(device: str) -> dict[str, object]:
             "provider_options": [{"device_id": index}, {}],
         }
 
-    if device.startswith("openvino"):
-        if "OpenVINOExecutionProvider" not in available:
-            raise ModelInitializationError(
-                "OpenVINO requested, but the installed ONNX Runtime has no "
-                "OpenVINO provider. Use the 'openvino' extra, or set "
-                "DEVICE=cpu."
-            )
-        target = device.split(":", 1)[1].upper() if ":" in device else "AUTO"
-        return {
-            "providers": ["OpenVINOExecutionProvider", "CPUExecutionProvider"],
-            "provider_options": [{"device_type": target}, {}],
-        }
-
     raise ValueError(f"Unsupported OCR device: {device!r}")
 
 
@@ -75,8 +61,7 @@ class PaddleOcrEngine:
     A PaddleOCR-based implementation of the OcrEngine protocol.
 
     PaddleOCR runs its detection and recognition models through ONNX Runtime.
-    The device can be ``cpu``, ``gpu``, ``gpu:<index>``, ``openvino``, or
-    ``openvino:<device>``.
+    The device can be ``cpu``, ``gpu``, or ``gpu:<index>``.
     """
 
     def __init__(
@@ -91,8 +76,7 @@ class PaddleOcrEngine:
         normalized_device = "cpu" if device is None else device.lower()
         if not _DEVICE_PATTERN.fullmatch(normalized_device):
             raise ValueError(
-                "device must be 'cpu', 'gpu', 'gpu:<index>', 'openvino', "
-                "or 'openvino:<device>'."
+                "device must be 'cpu', 'gpu', or 'gpu:<index>'."
             )
 
         engine_config = _engine_config(normalized_device)
@@ -101,8 +85,7 @@ class PaddleOcrEngine:
         except ImportError as exc:
             raise ModelInitializationError(
                 f"Could not import OCR dependencies: {exc}. "
-                "Install the 'cpu', 'gpu', or 'openvino' extra if dependencies "
-                "are missing."
+                "Install the 'cpu' or 'gpu' extra if dependencies are missing."
             ) from exc
 
         # this is a filter to suppress warnings and info messages from PaddleOCR startup
@@ -154,8 +137,7 @@ class PaddleOcrEngine:
         except ImportError as exc:
             raise ModelInitializationError(
                 f"Could not import OCR dependencies: {exc}. "
-                "Install the 'cpu', 'gpu', or 'openvino' extra if dependencies "
-                "are missing."
+                "Install the 'cpu' or 'gpu' extra if dependencies are missing."
             ) from exc
         except Exception as exc:
             raise ModelInitializationError(

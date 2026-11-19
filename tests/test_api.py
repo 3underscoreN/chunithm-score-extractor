@@ -120,13 +120,13 @@ class ApiTests(unittest.TestCase):
 
     def test_forwards_device_from_environment(self) -> None:
         extractor = StubExtractor()
-        with patch.dict(os.environ, {"DEVICE": "openvino"}), patch(
+        with patch.dict(os.environ, {"DEVICE": "gpu:0"}), patch(
             "chunithm_score_extractor.api.ChunithmExtractor",
             return_value=extractor,
         ) as constructor:
             with TestClient(create_app()) as client:
                 self.assertEqual(client.get("/health/ready").status_code, 200)
-        constructor.assert_called_once_with(device="openvino")
+        constructor.assert_called_once_with(device="gpu:0")
 
     def test_supports_the_legacy_device_environment_name(self) -> None:
         extractor = StubExtractor()

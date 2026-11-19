@@ -35,9 +35,7 @@ class PaddleOptionsTests(unittest.TestCase):
 
     def test_device_is_forwarded_as_onnxruntime_providers(self) -> None:
         paddleocr, constructor = _fake_paddleocr()
-        onnxruntime = _fake_onnxruntime(
-            {"CPUExecutionProvider", "CUDAExecutionProvider", "OpenVINOExecutionProvider"}
-        )
+        onnxruntime = _fake_onnxruntime({"CPUExecutionProvider", "CUDAExecutionProvider"})
 
         with patch.dict(
             sys.modules, {"paddleocr": paddleocr, "onnxruntime": onnxruntime}
@@ -63,28 +61,6 @@ class PaddleOptionsTests(unittest.TestCase):
                 constructor.call_args.kwargs["engine_config"],
                 {"providers": ["CPUExecutionProvider"]},
             )
-            PaddleOcrEngine(device="openvino")
-            self.assertEqual(
-                constructor.call_args.kwargs["engine_config"],
-                {
-                    "providers": [
-                        "OpenVINOExecutionProvider",
-                        "CPUExecutionProvider",
-                    ],
-                    "provider_options": [{"device_type": "AUTO"}, {}],
-                },
-            )
-            PaddleOcrEngine(device="openvino:gpu")
-            self.assertEqual(
-                constructor.call_args.kwargs["engine_config"],
-                {
-                    "providers": [
-                        "OpenVINOExecutionProvider",
-                        "CPUExecutionProvider",
-                    ],
-                    "provider_options": [{"device_type": "GPU"}, {}],
-                },
-            )
 
     def test_gpu_requires_the_cuda_provider(self) -> None:
         paddleocr, _ = _fake_paddleocr()
@@ -96,21 +72,13 @@ class PaddleOptionsTests(unittest.TestCase):
             with self.assertRaisesRegex(ModelInitializationError, "CUDA"):
                 PaddleOcrEngine(device="gpu")
 
-    def test_openvino_requires_the_openvino_provider(self) -> None:
-        paddleocr, _ = _fake_paddleocr()
-        onnxruntime = _fake_onnxruntime({"CPUExecutionProvider"})
-
-        with patch.dict(
-            sys.modules, {"paddleocr": paddleocr, "onnxruntime": onnxruntime}
-        ):
-            with self.assertRaisesRegex(ModelInitializationError, "OpenVINO"):
-                PaddleOcrEngine(device="openvino")
-
     def test_invalid_device_and_custom_engine_combination_are_rejected(self) -> None:
         with self.assertRaises(ValueError):
             PaddleOcrEngine(device="gpu:0,1")
         with self.assertRaises(ValueError):
-            PaddleOcrEngine(device="openvino:tpu")
+            PaddleOcrEngine(device="openvino")
+        with self.assertRaises(ValueError):
+            PaddleOcrEngine(device="openvino:gpu")
         with self.assertRaises(ValueError):
             ChunithmExtractor(ocr=Mock(), device="cpu")
 

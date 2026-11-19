@@ -3,12 +3,9 @@
 # Build one ONNX Runtime variant at a time:
 #   docker build --build-arg ORT_VARIANT=cpu      -t chunithm:cpu .
 #   docker build --build-arg ORT_VARIANT=gpu      -t chunithm:gpu .
-#   docker build --build-arg ORT_VARIANT=openvino -t chunithm:openvino .
 ARG ORT_VARIANT=cpu
 
 FROM astral/uv:python3.13-trixie-slim AS base-cpu
-
-FROM base-cpu AS base-openvino
 
 # ONNX Runtime 1.31+ needs CUDA 13 for the GPU build.
 FROM nvidia/cuda:13.5.0-cudnn-runtime-ubuntu26.04 AS base-gpu
