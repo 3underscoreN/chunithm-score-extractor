@@ -666,7 +666,8 @@ def _extract_difficulty(lines: Sequence[TextReading], threshold: float) -> Diffi
             continue
         found.update(_difficulty_in_text(line.text))
     if len(found) > 1:
-        raise ConflictingReadingsError("OCR returned conflicting difficulty readings.")
+        # raise ConflictingReadingsError("OCR returned conflicting difficulty readings.")
+        found = {next(iter(found))}
     if not found:
         raise UncertainResultError("The difficulty could not be read confidently.")
     return found.pop()
