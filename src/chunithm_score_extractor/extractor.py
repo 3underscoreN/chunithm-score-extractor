@@ -61,7 +61,7 @@ class ChunithmExtractor:
         device : str | None, optional
             The ONNX Runtime device for the built-in OCR engine. Defaults to
             the ``DEVICE`` environment variable, then ``"cpu"``. Examples are
-            ``"cpu"``, ``"gpu:0"``, and ``"openvino"``.
+            ``"cpu"``, ``"gpu"``, and ``"gpu:0"``.
         """
         if not 0 <= confidence_threshold <= 1:
             raise ValueError("confidence_threshold must be between 0 and 1.")

@@ -6,7 +6,7 @@ A Python library and optional self-hosted HTTP API for extracting the current-pl
 
 - Python 3.13
 - numpy, OpenCV, Pillow
-- PaddleOCR 3.7.0 running on ONNX Runtime. CPU, NVIDIA GPU, and Intel OpenVINO runtimes are supported, and you can also bring your own custom OCR engine.
+- PaddleOCR 3.7.0 running on ONNX Runtime. CPU and NVIDIA GPU runtimes are supported, and you can also bring your own custom OCR engine.
 - Docker (optional)
 
 Install the library and CPU OCR runtime with uv:
@@ -103,24 +103,20 @@ class Difficulty(StrEnum):
 uv sync --no-group onnx-cpu --extra gpu
 ```
 
-Use `uv sync --no-group onnx-cpu --extra openvino` for the OpenVINO runtime. Running plain `uv sync` again restores the CPU runtime. Keep one runtime per environment because all three packages provide the `onnxruntime` import.
+Running plain `uv sync` again restores the CPU runtime. Keep one runtime per environment because both packages provide the `onnxruntime` import.
 
 For pip, choose one extra in a fresh environment:
 
 ```shell
 python -m pip install ".[cpu]"       # CPU
 python -m pip install ".[gpu]"       # NVIDIA GPU
-python -m pip install ".[openvino]"  # Intel OpenVINO
 ```
 
 `pip install .` alone does not install an ONNX Runtime. Extras only add packages, so pip will not replace a runtime that is already installed.
 
-The built-in OCR engine reads the `DEVICE` environment variable when the `device` argument is not set. It defaults to `cpu`. Accepted values are `cpu`, `gpu`, `gpu:0`, `openvino`, `openvino:cpu`, `openvino:gpu`, `openvino:npu`, and `openvino:auto`. OpenVINO's `auto` mode lets the runtime choose an Intel CPU, GPU, or NPU.
+The built-in OCR engine reads the `DEVICE` environment variable when the `device` argument is not set. It defaults to `cpu`. Accepted values are `cpu`, `gpu`, and `gpu:0`.
 
-> [!NOTE]
-> The `openvino` extra installs `onnxruntime-openvino`, which is deprecated. We plan to move it to `onnxruntime-ep-openvino`, but that migration is not part of this release.
-
-ONNX Runtime 1.31 uses CUDA 13 and cuDNN, so the GPU build expects both. OpenVINO wheels are available for Linux x86_64 and Windows; Apple Silicon uses the CPU runtime. See the [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) for platform requirements and execution provider setup.
+ONNX Runtime 1.31 uses CUDA 13 and cuDNN, so the GPU build expects both. See the [ONNX Runtime installation guide](https://onnxruntime.ai/docs/install/) for platform requirements and execution provider setup.
 
 ### Bring Your Own OCR
 
@@ -157,13 +153,10 @@ You can set up this project as a standalone API server, and a Dockerfile is conv
 You can also use a prebuilt image from ghcr.io.
 
 > [!WARNING]
-> The published images are experimental and may not work on your hardware. Building your own image is the better option.
+> The published images are experimental and may not work on your hardware. Building your own image is always the better option.
 
 > [!NOTE]
-> Each image contains one ONNX Runtime variant. Tags end in `-cpu`, `-gpu`, or `-openvino`, and `latest` is the CPU image. The GPU image includes CUDA 13.5 and cuDNN. Only that image needs an NVIDIA driver.
-
-> [!IMPORTANT]
-> The OpenVINO image is untested. `onnxruntime-openvino` is deprecated, and we plan to migrate to `onnxruntime-ep-openvino`. That migration is not included yet.
+> Each image contains one ONNX Runtime variant. Tags end in `-cpu` or `-gpu`.`latest` is the CPU image. The GPU image includes CUDA 13.5 and cuDNN. Only the `gpu` image needs an NVIDIA driver.
 
 ```shell
 # CPU
@@ -171,9 +164,6 @@ docker run --rm -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:lates
 
 # NVIDIA GPU
 docker run --rm --gpus all -e DEVICE=gpu -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:latest-gpu
-
-# OpenVINO
-docker run --rm -e DEVICE=openvino -p 8000:8000 ghcr.io/3underscoren/chunithm-score-extractor:latest-openvino
 ```
 
 To build a variant locally, pass it as a build argument:
@@ -181,7 +171,6 @@ To build a variant locally, pass it as a build argument:
 ```shell
 docker build --build-arg ORT_VARIANT=cpu -t chunithm-score-extractor:cpu .
 docker build --build-arg ORT_VARIANT=gpu -t chunithm-score-extractor:gpu .
-docker build --build-arg ORT_VARIANT=openvino -t chunithm-score-extractor:openvino .
 ```
 
 The published images target `linux/amd64`. On an Apple Silicon host, add `--platform linux/amd64` to the local build command.
